@@ -1,12 +1,26 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routes.router import router
+from contextlib import asynccontextmanager
+from app.database import db
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Código aqui roda na inicialização
+    print("Aplicação iniciando...")
+    yield
+    # Código aqui roda na finalização (quando você usa Ctrl+C)
+    print("Aplicação desligando, fechando conexão com o banco...")
+    db.close()
+    print("Conexão com o banco fechada.")
 
 app = FastAPI(
     title="MVP Saúde do Homem - CheckMen",
     description="API para aplicativo de saúde preventiva masculina",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
+
 
 # CORS
 app.add_middleware(
@@ -31,10 +45,6 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "CheckMen API"}
-
-@app.get("/api/test")
-async def test_endpoint():
     return {
         "message": "API funcionando!",
         "backend": "FastAPI + Oracle NoSQL"

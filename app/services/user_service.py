@@ -76,15 +76,11 @@ class UserService:
         }
 
     async def login_user(self, login_data: UserLogin) -> Dict[str, Any]:
-        """Faz login do usuário usando email ou nome de usuário"""
-        user: Optional[Dict[str, Any]] = None
-        
-        if "@" in login_data.identifier:
-            user = await self._get_user_by_email(login_data.identifier)
-        else:
-            user = await self._get_user_by_name(login_data.identifier)
+        """Faz login do usuário"""
 
-        if not user or not AuthUtils.verify_password(login_data.password, user.get("password_hash", "")):
+        # Buscar usuário por email
+        user = await self._get_user_by_email(login_data.email)
+        if not user:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Identificador ou senha incorretos"
@@ -157,4 +153,6 @@ class UserService:
             return user
         return None
 
+
+# Instância do serviço
 user_service = UserService()

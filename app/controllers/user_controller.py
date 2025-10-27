@@ -1,8 +1,5 @@
 from fastapi import APIRouter, HTTPException, status, Depends
-from app.schemas.user_schema import (
-    UserCreate, UserLogin, PasswordReset, Token, EmailOnly, 
-    SecurityWordCheck, RefreshTokenRequest, RefreshTokenResponse
-)
+from app.schemas.user_schema import UserCreate, UserLogin, PasswordReset, Token, EmailOnly, SecurityWordCheck
 from app.services.user_service import user_service
 from app.utils.auth import AuthUtils, get_current_user
 
@@ -19,28 +16,6 @@ async def register(user_data: UserCreate):
 async def login(login_data: UserLogin):
     """Fazer login"""
     return await user_service.login_user(login_data)
-
-
-@router.post("/refresh-token", response_model=RefreshTokenResponse)
-async def refresh_token(token_data: RefreshTokenRequest):
-    """Gera um novo access_token a partir de um refresh_token válido"""
-    payload = AuthUtils.verify_token(token_data.refresh_token, expected_type="refresh")
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token inválido"
-        )
-    
-    user = await user_service.get_user_by_id(user_id)
-    if not user or not user.get("is_active"):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuário não encontrado ou inativo"
-        )
-
-    new_access_token = AuthUtils.create_access_token(data={"sub": user_id})
-    return {"access_token": new_access_token}
 
 
 @router.post("/reset-password")
