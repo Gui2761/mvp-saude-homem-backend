@@ -29,7 +29,6 @@ class UserService:
                 PRIMARY KEY(user_id)
             )
             """
-            # Usar TableRequest para DDL no Oracle NoSQL
             request = TableRequest().set_statement(create_table_ddl)
             db.handle.table_request(request)
             print(f"Tabela {self.table_name} criada/verificada com sucesso!")
@@ -38,80 +37,74 @@ class UserService:
 
     async def register_user(self, user_data: UserCreate) -> Dict[str, Any]:
         """Registra novo usuário"""
-
-        # Verificar se email já existe
         if await self._email_exists(user_data.email):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Email já cadastrado"
             )
 
-        # Criar usuário
         user_id = str(uuid.uuid4())
         now = datetime.utcnow()
 
         user_doc = {
-            "user_id": user_id,  # ← user_id em vez de id
+            "user_id": user_id,
             "name": user_data.name,
             "email": user_data.email,
             "password_hash": AuthUtils.hash_password(user_data.password),
             "security_word": user_data.security_word.lower(),
-            "is_active": True,  # ← Adicionar is_active
+            "is_active": True,
             "created_at": now.isoformat(),
             "updated_at": now.isoformat()
         }
 
-        # Salvar no banco
         put_request = PutRequest().set_table_name(self.table_name).set_value(user_doc)
         db.handle.put(put_request)
 
-        # Criar token
-        token = AuthUtils.create_access_token({"sub": user_id})
+        access_token = AuthUtils.create_access_token({"sub": user_id})
+        refresh_token = AuthUtils.create_refresh_token({"sub": user_id})
 
         return {
-            "access_token": token,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": {
-                "user_id": user_id,  # ← user_id em vez de id
+                "user_id": user_id,
                 "name": user_data.name,
                 "email": user_data.email,
-                "created_at": now.isoformat()
+                "created_at": now
             }
         }
 
     async def login_user(self, login_data: UserLogin) -> Dict[str, Any]:
-        """Faz login do usuário"""
+        """Faz login do usuário usando email ou nome de usuário"""
+        user: Optional[Dict[str, Any]] = None
+        
+        if "@" in login_data.identifier:
+            user = await self._get_user_by_email(login_data.identifier)
+        else:
+            user = await self._get_user_by_name(login_data.identifier)
 
-        # Buscar usuário por email
-        user = await self._get_user_by_email(login_data.email)
-        if not user:
+        if not user or not AuthUtils.verify_password(login_data.password, user.get("password_hash", "")):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Email ou senha incorretos"
+                detail="Identificador ou senha incorretos"
             )
 
-        # Verificar se usuário está ativo
         if not user.get("is_active", True):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Conta desativada"
             )
 
-        # Verificar senha
-        if not AuthUtils.verify_password(login_data.password, user["password_hash"]):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Email ou senha incorretos"
-            )
-
-        # Criar token
-        token = AuthUtils.create_access_token({"sub": user["user_id"]})  # ← user_id
+        access_token = AuthUtils.create_access_token({"sub": user["user_id"]})
+        refresh_token = AuthUtils.create_refresh_token({"sub": user["user_id"]})
 
         return {
-            "access_token": token,
+            "access_token": access_token,
+            "refresh_token": refresh_token,
             "token_type": "bearer",
             "user": {
-                "user_id": user["user_id"],  # ← user_id em vez de id
+                "user_id": user["user_id"],
                 "name": user["name"],
                 "email": user["email"],
                 "created_at": user["created_at"]
@@ -120,36 +113,18 @@ class UserService:
 
     async def reset_password(self, reset_data: PasswordReset) -> Dict[str, str]:
         """Recupera senha usando palavra de segurança"""
-
-        # Buscar usuário
         user = await self._get_user_by_email(reset_data.email)
         if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Email não encontrado"
-            )
-
-        # Verificar se usuário está ativo
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Email não encontrado")
         if not user.get("is_active", True):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Conta desativada"
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Conta desativada")
+        if user.get("security_word") != reset_data.security_word.lower():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Palavra de segurança incorreta")
 
-        # Verificar palavra de segurança
-        if user["security_word"] != reset_data.security_word.lower():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Palavra de segurança incorreta"
-            )
-
-        # Atualizar senha
         user["password_hash"] = AuthUtils.hash_password(reset_data.new_password)
         user["updated_at"] = datetime.utcnow().isoformat()
-
         put_request = PutRequest().set_table_name(self.table_name).set_value(user)
         db.handle.put(put_request)
-
         return {"message": "Senha alterada com sucesso"}
 
     async def _email_exists(self, email: str) -> bool:
@@ -162,25 +137,24 @@ class UserService:
         query = f"SELECT * FROM {self.table_name} WHERE email = '{email}'"
         request = QueryRequest().set_statement(query)
         result = db.handle.query(request)
+        return result.get_results()[0] if result.get_results() else None
 
-        if result.get_results():
-            return result.get_results()[0]
-        return None
+    async def _get_user_by_name(self, name: str) -> Optional[Dict[str, Any]]:
+        """Busca usuário pelo nome"""
+        query = f"SELECT * FROM {self.table_name} WHERE name = '{name}'"
+        request = QueryRequest().set_statement(query)
+        result = db.handle.query(request)
+        return result.get_results()[0] if result.get_results() else None
 
     async def get_user_by_id(self, user_id: str) -> Optional[Dict[str, Any]]:
         """Busca usuário por ID"""
-        # Usar user_id como chave primária
         get_request = GetRequest().set_table_name(self.table_name).set_key({"user_id": user_id})
         result = db.handle.get(get_request)
-
         if result.get_value():
             user = result.get_value()
-            # Remover dados sensíveis do retorno
             user.pop("password_hash", None)
             user.pop("security_word", None)
             return user
         return None
 
-
-# Instância do serviço
 user_service = UserService()

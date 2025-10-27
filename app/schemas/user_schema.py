@@ -10,8 +10,8 @@ class UserCreate(BaseModel):
     security_word: str = Field(..., min_length=3, max_length=50, description="Palavra de segurança para recuperação")
 
 class UserLogin(BaseModel):
-    """Schema para login"""
-    email: EmailStr = Field(..., description="Email do usuário")
+    """Schema para login - Agora aceita email ou nome de usuário"""
+    identifier: str = Field(..., description="Email ou nome de usuário")
     password: str = Field(..., description="Senha do usuário")
 
 class UserOut(BaseModel):
@@ -20,7 +20,6 @@ class UserOut(BaseModel):
     name: str
     email: str
     created_at: datetime
-
 
 class PasswordReset(BaseModel):
     """Schema para recuperação de senha"""
@@ -36,15 +35,24 @@ class PasswordUpdate(BaseModel):
 class Token(BaseModel):
     """Schema para resposta de login"""
     access_token: str
+    refresh_token: str
     token_type: str
     user: UserOut
+
+class RefreshTokenResponse(BaseModel):
+    """Schema para resposta do refresh"""
+    access_token: str
+    token_type: str = "bearer"
+
+class RefreshTokenRequest(BaseModel):
+    """Schema para a requisição de refresh"""
+    refresh_token: str
 
 class DeviceToken(BaseModel):
     """Schema para registro de token do dispositivo"""
     device_token: str = Field(..., description="Token FCM do dispositivo")
     platform: Optional[str] = Field(default="android", description="Plataforma (android/ios)")
 
-# Schemas para validação de entrada
 class EmailOnly(BaseModel):
     """Schema para endpoints que precisam só do email"""
     email: EmailStr
