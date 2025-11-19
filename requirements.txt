@@ -9,6 +9,6 @@ passlib[bcrypt]
 python-multipart
 python-decouple
 requests
-firebase-admin
+firebase-admin # 🟢 NOVO
 APScheduler
 pydantic[email]

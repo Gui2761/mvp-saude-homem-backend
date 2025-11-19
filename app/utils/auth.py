@@ -11,20 +11,24 @@ ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.getenv("REFRESH_TOKEN_EXPIRE_DAYS", "7"))
 
-# Context para hash de senhas
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Constante para o limite de 72 bytes do bcrypt (não usado)
+BCRYPT_MAX_LENGTH = 72
+
+# 🟢 SOLUÇÃO FINAL: Usamos *apenas* sha256_crypt para máxima estabilidade
+pwd_context = CryptContext(schemes=["sha256_crypt"], deprecated="auto")
 security = HTTPBearer()
 
 
 class AuthUtils:
     @staticmethod
     def hash_password(password: str) -> str:
-        """Gera hash da senha"""
+        """Gera hash da senha usando sha256_crypt."""
         return pwd_context.hash(password)
 
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
-        """Verifica se a senha está correta"""
+        """Verifica se a senha está correta."""
+        # Se a senha foi salva com sha256_crypt, ela será verificada corretamente aqui.
         return pwd_context.verify(plain_password, hashed_password)
 
     @staticmethod

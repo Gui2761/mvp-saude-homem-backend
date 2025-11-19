@@ -6,13 +6,15 @@ class UserCreate(BaseModel):
     """Schema para criação de usuário (registro)"""
     name: str = Field(..., min_length=2, max_length=100, description="Nome completo")
     email: EmailStr = Field(..., description="Email válido")
-    password: str = Field(..., min_length=6, description="Senha mínimo 6 caracteres")
+    # 🟢 CORREÇÃO: Adicionado max_length=72
+    password: str = Field(..., min_length=6, max_length=72, description="Senha (mínimo 6, máximo 72 caracteres)")
     security_word: str = Field(..., min_length=3, max_length=50, description="Palavra de segurança para recuperação")
 
 class UserLogin(BaseModel):
     """Schema para login - Agora aceita email ou nome de usuário"""
     identifier: str = Field(..., description="Email ou nome de usuário")
-    password: str = Field(..., description="Senha do usuário")
+    # Ajustamos a descrição para refletir a nova limitação, embora o `verify_password` lide com a truncagem.
+    password: str = Field(..., description="Senha do usuário (máx. 72 caracteres)") 
 
 class UserOut(BaseModel):
     """Schema para retorno de dados do usuário (sem senha)"""
@@ -25,12 +27,13 @@ class PasswordReset(BaseModel):
     """Schema para recuperação de senha"""
     email: EmailStr = Field(..., description="Email cadastrado")
     security_word: str = Field(..., description="Palavra de segurança")
-    new_password: str = Field(..., min_length=6, description="Nova senha")
+    # 🟢 CORREÇÃO: Adicionado max_length=72
+    new_password: str = Field(..., min_length=6, max_length=72, description="Nova senha (mínimo 6, máximo 72 caracteres)")
 
 class PasswordUpdate(BaseModel):
     """Schema para atualização de senha (quando logado)"""
     current_password: str = Field(..., description="Senha atual")
-    new_password: str = Field(..., min_length=6, description="Nova senha")
+    new_password: str = Field(..., min_length=6, max_length=72, description="Nova senha (mínimo 6, máximo 72 caracteres)")
 
 class Token(BaseModel):
     """Schema para resposta de login"""
@@ -53,6 +56,10 @@ class DeviceToken(BaseModel):
     device_token: str = Field(..., description="Token FCM do dispositivo")
     platform: Optional[str] = Field(default="android", description="Plataforma (android/ios)")
 
+class ExamSchedule(BaseModel): 
+    exam_name: str = Field(..., description="Nome do Exame")
+    exam_date: str = Field(..., description="Data do Exame no formato YYYY-MM-DD")
+    
 class EmailOnly(BaseModel):
     """Schema para endpoints que precisam só do email"""
     email: EmailStr

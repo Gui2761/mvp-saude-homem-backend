@@ -3,15 +3,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.router import router
 from contextlib import asynccontextmanager
 from app.database import db
+from app.firebase_setup import scheduler # 🟢 Importa o scheduler
+import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Código aqui roda na inicialização
     print("Aplicação iniciando...")
+    # 🟢 Inicia o agendador
+    if not scheduler.running:
+        scheduler.start() 
     yield
     # Código aqui roda na finalização (quando você usa Ctrl+C)
     print("Aplicação desligando, fechando conexão com o banco...")
     db.close()
+    # 🟢 Desliga o agendador
+    if scheduler.running:
+        scheduler.shutdown()
     print("Conexão com o banco fechada.")
 
 app = FastAPI(
