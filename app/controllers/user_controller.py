@@ -72,24 +72,15 @@ async def schedule_exam_test(
     current_user_id: str = Depends(get_current_user)
 ):
     """
-    Agendar um lembrete de exame para teste (3 dias antes).
-    A data deve ser no formato YYYY-MM-DD.
+    Agendar um lembrete de exame (o backend calcula a data de notificação para 3 dias antes).
     """
-    
-    # 1. Recuperar o usuário e dados do token
+    # Recuperar o usuário e dados do token (incluindo sensíveis para pegar a lista de tokens)
     user = await user_service.get_user_by_id(current_user_id, include_sensitive=True) 
     
-    # 🟢 DEBUG CRÍTICO: Imprime o que o servidor encontrou no banco
-    print("---------------------------------------------------------")
-    print(f"DEBUG USUÁRIO: {user}")
-    print(f"DEBUG TOKENS: {user.get('device_tokens') if user else 'NULO'}")
-    print("---------------------------------------------------------")
-    # FIM DO DEBUG
-
     if not user or not user.get('device_tokens'):
         raise HTTPException(status_code=404, detail="Token do dispositivo não encontrado. Certifique-se de ter feito login no aplicativo.")
     
-    # 2. Agendar usando o último token (o mais recente)
+    # Usa o último token registrado (o mais recente)
     latest_token = user['device_tokens'][-1]['token'] 
     
     schedule_reminder(
@@ -99,7 +90,7 @@ async def schedule_exam_test(
         exam_data.exam_date  
     )
     
-    return {"message": f"Agendamento de teste para o exame '{exam_data.exam_name}' enviado para o agendador."}
+    return {"message": "Agendamento realizado com sucesso."}
 
 
 @router.get("/me")
