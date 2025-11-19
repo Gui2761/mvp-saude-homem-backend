@@ -1,4 +1,6 @@
-from borneo import PutRequest, GetRequest, QueryRequest, TableRequest
+# gui2761/mvp-saude-homem-backend/app/services/user_service.py
+
+from borneo import PutRequest, GetRequest, QueryRequest, TableRequest, TableLimits
 from app.database import db
 from app.utils.auth import AuthUtils
 from app.schemas.user_schema import UserCreate, UserLogin, PasswordReset
@@ -10,7 +12,8 @@ import uuid
 
 class UserService:
     def __init__(self):
-        self.table_name = "Users"
+        # 🟢 MUDANÇA 1: Nome da tabela alterado para evitar conflito com a antiga e sem traços
+        self.table_name = "UsersV2"
         self._create_table_if_not_exists()
 
     def _create_table_if_not_exists(self):
@@ -31,10 +34,16 @@ class UserService:
             )
             """
             request = TableRequest().set_statement(create_table_ddl)
+            
+            # 🟢 MUDANÇA 2: Definindo limites de Throughput e Capacidade (Obrigatório na Nuvem)
+            # Leitura: 50 unidades, Escrita: 50 unidades, Armazenamento: 25 GB (Limites do Free Tier geralmente)
+            limits = TableLimits(50, 50, 25)
+            request.set_table_limits(limits)
+
             db.handle.table_request(request)
-            print(f"Tabela Users criada/verificada com sucesso!")
+            print(f"Tabela {self.table_name} criada/verificada com sucesso!")
         except Exception as e:
-            print(f"Tabela Users já existe ou erro: {e}")
+            print(f"Tabela {self.table_name} já existe ou erro: {e}")
 
     async def save_device_token(self, user_id: str, device_token: str, platform: Optional[str] = "android"):
         """Salva ou atualiza o token do dispositivo para o usuário."""
@@ -43,11 +52,12 @@ class UserService:
         if not user:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
 
-        # Garante que 'device_tokens' é uma lista (o get_user_by_id já faz isso, mas esta é a camada de salvamento)
+        # Garante que 'device_tokens' é uma lista
         user.setdefault('device_tokens', []) 
         
         tokens: List[Dict[str, str]] = user['device_tokens']
         
+        # Remove token se já existir para evitar duplicatas
         tokens = [t for t in tokens if t.get('token') != device_token]
         
         tokens.append({
@@ -190,7 +200,6 @@ class UserService:
         if result.get_value():
             user = result.get_value()
             
-            # 🟢 CORREÇÃO CRÍTICA: Garante que 'device_tokens' existe como lista se for para uso interno/sensível
             if include_sensitive:
                  user.setdefault('device_tokens', []) 
                  
