@@ -3,21 +3,31 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.routes.router import router
 from contextlib import asynccontextmanager
 from app.database import db
-from app.firebase_setup import scheduler # 🟢 Importa o scheduler
+from app.firebase_setup import scheduler, initialize_firebase # 🟢 ADICIONADO: Importar a função de inicialização
 import os
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Código aqui roda na inicialização
     print("Aplicação iniciando...")
-    # 🟢 Inicia o agendador
+    
+    # 🟢 CORREÇÃO: Inicializa o Firebase ANTES de tudo
+    try:
+        initialize_firebase()
+    except Exception as e:
+        print(f"Erro ao inicializar Firebase: {e}")
+
+    # Inicia o agendador de notificações
     if not scheduler.running:
         scheduler.start() 
+        
     yield
+    
     # Código aqui roda na finalização (quando você usa Ctrl+C)
     print("Aplicação desligando, fechando conexão com o banco...")
     db.close()
-    # 🟢 Desliga o agendador
+    
+    # Desliga o agendador
     if scheduler.running:
         scheduler.shutdown()
     print("Conexão com o banco fechada.")

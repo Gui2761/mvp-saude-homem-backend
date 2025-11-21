@@ -1,105 +1,64 @@
 import firebase_admin
 from firebase_admin import credentials, messaging
-import os
-from pathlib import Path
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, timedelta
-import asyncio
+import os
 
-# -----------------------------------------------------------
-# Configuração
-# -----------------------------------------------------------
-# Certifique-se de que este arquivo JSON esteja na RAIZ do seu projeto backend!
-SERVICE_ACCOUNT_FILE = 'firebase-service-account.json' 
+CREDENTIALS_PATH = "firebase-service-account.json"
 
-# Inicializa o agendador (usa asyncio para compatibilidade com FastAPI)
-scheduler = AsyncIOScheduler() 
+def initialize_firebase():
+    if not firebase_admin._apps:
+        if os.path.exists(CREDENTIALS_PATH):
+            cred = credentials.Certificate(CREDENTIALS_PATH)
+            firebase_admin.initialize_app(cred)
+            print("Firebase Admin SDK inicializado com sucesso!")
+        else:
+            print(f"ERRO: Arquivo de credenciais não encontrado em {CREDENTIALS_PATH}")
 
-def initialize_firebase_admin():
-    """Inicializa o Firebase Admin SDK com as credenciais."""
+def send_fcm_message(token: str, title: str, body: str):
     try:
-        # Caminho absoluto para a chave de serviço
-        base_dir = Path(__file__).resolve().parent.parent
-        cred_path = base_dir / SERVICE_ACCOUNT_FILE
-
-        if not cred_path.exists():
-            print(f"ERRO: Chave do Firebase Admin não encontrada em {cred_path}")
-            return None
-
-        cred = credentials.Certificate(str(cred_path))
-        # Inicializa o app Firebase (uma vez)
-        firebase_admin.initialize_app(cred)
-        print("Firebase Admin SDK inicializado com sucesso!")
-        return messaging
-        
+        message = messaging.Message(
+            notification=messaging.Notification(
+                title=title,
+                body=body,
+            ),
+            token=token,
+        )
+        response = messaging.send(message)
+        print('Mensagem FCM enviada com sucesso:', response)
     except Exception as e:
-        print(f"Falha ao inicializar o Firebase Admin SDK: {e}")
-        return None
+        print('Erro ao enviar mensagem FCM:', e)
 
-# Inicializa o módulo de mensagens
-fcm_messaging = initialize_firebase_admin()
+scheduler = BackgroundScheduler()
+scheduler.start()
 
-# -----------------------------------------------------------
-# Lógica de Agendamento e Envio
-# -----------------------------------------------------------
-
-async def send_exam_reminder(token: str, exam_name: str, exam_date: str):
-    """Função que será executada pelo agendador para enviar a notificação Push."""
-    if not fcm_messaging:
-        print("FCM não está inicializado. Falha ao enviar lembrete.")
-        return
-
-    # O payload da notificação que será exibido na tela do Android
-    notification_payload = messaging.Notification(
-        title='⏰ Lembrete: Exame Próximo!',
-        body=f'O exame "{exam_name}" está agendado para {exam_date}. Prepare-se!',
-    )
-    
-    message = messaging.Message(
-        notification=notification_payload,
-        token=token,
-        # Você pode adicionar dados personalizados aqui, se precisar
-        data={
-            "screen": "lembretes", 
-            "exam_name": exam_name,
-        }
-    )
-
-    try:
-        response = fcm_messaging.send(message)
-        print(f"Mensagem FCM enviada com sucesso: {response}")
-    except Exception as e:
-        print(f"Erro ao enviar mensagem FCM para o token {token}: {e}")
-
+# 🟢 ATUALIZADO: Removido parâmetro recurrence e lógica complexa
 def schedule_reminder(user_id: str, token: str, exam_name: str, exam_date_str: str):
-    """Calcula e agenda o lembrete para 3 dias antes do exame."""
-    
+    """
+    Agenda um lembrete único para 3 dias antes do exame.
+    """
     try:
-        # Tenta parsear a data para 'YYYY-MM-DD'
-        exam_date = datetime.strptime(exam_date_str, '%Y-%m-%d')
-    except ValueError as e:
-        print(f"Erro de formato de data: {e}")
-        return
+        exam_date = datetime.strptime(exam_date_str, "%Y-%m-%d")
+        
+        # Data do aviso (3 dias antes)
+        run_date = exam_date - timedelta(days=3)
+        
+        # Se já passou (para testes), joga para 1 minuto no futuro
+        if run_date < datetime.now():
+            run_date = datetime.now() + timedelta(minutes=1)
 
-    # Data para agendar o lembrete (3 dias antes, às 9h00 da manhã)
-    reminder_date = exam_date - timedelta(days=3)
-    reminder_date = reminder_date.replace(hour=9, minute=0, second=0)
-    
-    # Se a data de lembrete já passou, agendar para daqui a 1 minuto para fins de teste
-    if reminder_date < datetime.now():
-         reminder_date = datetime.now() + timedelta(minutes=1) 
-         print(f"Aviso: Data de lembrete no passado, agendando para o próximo minuto ({reminder_date.strftime('%Y-%m-%d %H:%M:%S')}).")
+        job_id = f"reminder_{user_id}_{exam_name}_{exam_date_str}"
 
-    # Cria um ID de trabalho único para o APScheduler
-    job_id = f"reminder_{user_id}_{exam_name}_{exam_date_str}" 
-    
-    # Adiciona a tarefa ao agendador (chama a função assíncrona)
-    scheduler.add_job(
-        send_exam_reminder, 
-        'date', 
-        run_date=reminder_date, 
-        args=[token, exam_name, exam_date_str],
-        id=job_id,
-        replace_existing=True
-    )
-    print(f"Lembrete agendado para {reminder_date.strftime('%Y-%m-%d %H:%M:%S')} com ID: {job_id}")
+        # 🟢 Usa trigger='date' para executar UMA vez na data específica
+        scheduler.add_job(
+            send_fcm_message,
+            trigger='date',
+            run_date=run_date,
+            id=job_id,
+            args=[token, "Lembrete de Exame", f"Não esqueça do seu exame: {exam_name}! É daqui a 3 dias."],
+            replace_existing=True
+        )
+        print(f"Lembrete agendado para {run_date}")
+
+    except Exception as e:
+        print(f"Erro ao agendar lembrete: {e}")

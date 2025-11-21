@@ -12,3 +12,4 @@ requests
 firebase-admin # 🟢 NOVO
 APScheduler
 pydantic[email]
+feedparser
